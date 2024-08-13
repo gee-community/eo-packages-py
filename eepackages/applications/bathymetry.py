@@ -354,6 +354,150 @@ class Bathymetry(object):
 
     def compute_intertidal_depth(
         self,
+        tile,
+        start: datetime,
+        stop: datetime,
+        scale: float,
+        filter_masked: bool,
+
+        filter_masked_fraction: Optional[float] = None,
+        filter: Optional[ee.Filter] = None,
+        bounds_buffer: Optional[float] = None,
+        water_index_min: Optional[float] = None,
+        water_index_max: Optional[float] = None,
+        missions: List[str] = ["S2", "L8"],
+        skip_scene_boundary_fix=False,
+        skip_neighborhood_search: bool = False,
+        neighborhood_search_parameters: Dict[str, float] = {
+            "erosion": 0,
+            "dilation": 0,
+            "weight": 100,
+        },
+        lower_cdf_boundary: float = 70,
+        upper_cdf_boundary: float = 80,
+        cloud_frequency_threshold_data: float = 0.15,
+        clip: bool = False,
+    ) -> ee.ImageCollection:
+        
+        bounds: ee.Geometry = ee.Feature(tile).geometry().bounds(1) # ADDED
+
+        if water_index_min:
+            self.waterIndexMin = water_index_min
+        water_index_min = self.waterIndexMin
+        if water_index_max:
+            self.waterIndexMax = water_index_max
+        water_index_max = self.waterIndexMax
+        if bounds_buffer:
+            bounds = bounds.buffer(bounds_buffer, bounds_buffer / 10)
+
+        images: ee.ImageCollection = self.get_images(
+            bounds=bounds,
+            start=start,
+            stop=stop,
+            filter_masked=filter_masked,
+            filter_masked_fraction=filter_masked_fraction,
+            scale=scale,
+            missions=missions,
+            cloud_frequency_threshold_delta=cloud_frequency_threshold_data,
+            filter=filter,
+        )
+
+        self._raw_images = images
+
+        bands: List[str] = ["blue", "green", "red", "nir", "swir"]
+
+        # Mask all zero images
+        def mask_zero_images(i: ee.Image) -> ee.Image:
+            mask: ee.Image = (
+                i.select(bands).mask().reduce(ee.Reducer.allNonZero()).eq(1)
+            )
+            return i.updateMask(mask)
+
+        images = images.map(mask_zero_images)
+
+        if not bounds_buffer:
+            bounds_buffer = 10000  # Not being used.
+
+        if skip_neighborhood_search:
+            images = assets.addCdfQualityScore(images, 70, 80, False)
+        else:
+            images = assets.addCdfQualityScore(
+                images=images,
+                opt_thresholdMin=lower_cdf_boundary,
+                opt_thresholdMax=upper_cdf_boundary,
+                opt_includeNeighborhood=True,
+                opt_neighborhoodOptions=neighborhood_search_parameters,
+            )
+
+        if not skip_scene_boundary_fix:
+
+            def fix_scene_boundaries(i: ee.Image) -> ee.Image:
+                weight: ee.Image = i.select("weight")
+                mask: ee.Image = i.select(0).mask()
+
+                mask = (
+                    utils.focalMin(mask, 10)
+                    .reproject(ee.Projection("EPSG:3857").atScale(scale))
+                    .resample("bicubic")
+                )
+                mask = (
+                    utils.focalMaxWeight(mask.Not(), 10)
+                    .reproject(ee.Projection("EPSG:3857").atScale(scale))
+                    .resample("bicubic")
+                )
+                mask = ee.Image.constant(1).subtract(mask)
+
+                weight = weight.multiply(mask)
+
+                return i.addBands(srcImg=weight, overwrite=True)
+
+            images = images.map(fix_scene_boundaries)
+
+        self._refined_images = images
+
+        # ADD-INS (method improvements)
+
+        # additional properties
+        zoom: ee.String = ee.String(tile.get("zoom"))
+        tx: ee.String = ee.String(tile.get("tx"))
+        ty: ee.String = ee.String(tile.get("ty"))
+        tile_name: ee.String = ee.String("z").cat(zoom).cat("_x").cat(tx).cat("_y").cat(ty).replace("\.\d+", "", "g")
+        img_fullname: ee.String = ee.String(tile_name).cat("_t").cat(ee.Date(start).millis().format())
+
+        def add_props(image):
+            return ee.Image(image.set(
+                "fullname", img_fullname,
+                "zoom", zoom,
+                "tx", tx,
+                "ty", ty
+            ))
+
+        images = images.map(add_props)
+
+        self._check_images = images
+
+        # map GTSM & GEBCO on the image collection
+        GTSMcol = images.map(lambda image: self.add_gtsm_gebco_data_to_images(image.clip(bounds), gtsm_col, ee.Feature(bounds))) # TODO: test.clip(bounds)
+
+        filteredGTSM = GTSMcol.filter(ee.Filter.notNull(['gtsm_feature'])) # images with matching GTSM data
+        filteredNoGTSM = GTSMcol.filter(ee.Filter.notNull(['gtsm_feature']).Not()) # images without matching GTSM data
+
+        # map collection to set image properties
+        filteredGTSM = filteredGTSM.map(lambda image: self.set_gtsm_gebco_data_to_images(image, gebco_image))
+        filteredNoGTSM = filteredNoGTSM.map(lambda image: image.set({'gtsm_gebco_data_isempty': True})) 
+
+        self._images_WLinfo = filteredGTSM
+        self._images_NoWLinfo = filteredNoGTSM
+
+        # merge the two collections
+        GTSMCollection = filteredGTSM.merge(filteredNoGTSM)
+
+        # END ADD-INS (method improvements)
+
+        return GTSMCollection
+    
+    def compute_intertidal_depth_2(
+        self,
         bounds,
         start: datetime,
         stop: datetime,
@@ -527,6 +671,72 @@ class Bathymetry(object):
             return image.clip(bounds)
         else:
             return image
+    
+    def compute_intertidal_depth_3():
+        return 0
+
+        # Below comes a complex situation because we want to use getInfo & ee.Algorithms.if as little as possible so we need to work with map & filters, yet, we cannot succeed to get rid of all
+        # the ee.Algorithms.if because we have 3 options; all data in filteredGTSM, data in both filteredGTSM & filteredNoGTSM and data in only filteredNoGTSM. In case of the former two, 
+        # get_tide_offsets_and_spread and calibrated_bathy get data with GTSM info coupled and everything works fine. In case of the latter, it will break without if statement because these 
+        # functions cannot handle zero imagecollections.. The crux is really in the get_tide_offsets_and_spread. We cannot combine the two imagecollections before because it will break on data 
+        # without GTSM info. We also cannot combine after because it will break on an empty filteredGTSM list (latter option). Besides, we want to keep tehm seperate to calibrate the filteredGTSM
+        # collection if we have it.. TODO: see if we can get rid of ee.algorithms.if after all..  
+        # ideas: https://gis.stackexchange.com/questions/414324/handling-null-images-using-map-function-with-google-earth-engine-python-api; refactor complete functionality by giving back
+        # compute_intertidal_depth after step above. Then filter out the tile already that has no GTSM coupled and then continue with the calibration of tiles with GTSM. 
+
+        # compute bool_empty ImageCollection is empty
+        # bool_empty_filGTSM = filteredGTSM.size().eq(0)
+        # bool_empty_filNoGTSM = filteredNoGTSM.size().eq(0)
+
+        # # Use two server-side conditional statements to keep memory usage low by comparing against an empty imagecollection as both true and false conditions are calculated at once. 
+        # # See: https://developers.google.com/earth-engine/apidocs/ee-algorithms-if
+        # image_calib = ee.Image(ee.Algorithms.If(bool_empty_filGTSM, ee.ImageCollection([]).first(), self.compute_bathy_GTSM(filteredGTSM)))
+        # image_uncalib = ee.Image(ee.Algorithms.If(bool_empty_filNoGTSM, ee.ImageCollection([]).first(), self.compute_proxy_NoGTSM(filteredNoGTSM)))
+
+        # # merge the images
+        # image_bp = ee.ImageCollection([image_calib, image_uncalib])
+        # image = image_bp.first() #this select the first image; image_bathy if it exists, else image_proxy
+
+        # END ADD-INS
+
+        # mean = sum(w * x) / sum (w)
+        # self.composite = (
+        #     images.map(lambda i: i.select(bands).multiply(i.select("weight")))
+        #     .sum()
+        #     .divide(images.select("weight").sum())
+        #     .select(["red", "green", "blue", "swir", "nir"])
+        # )
+
+        # bands = ["ndwi", "indvi", "mndwi"]
+
+        # def calculate_water_statistics(i: ee.Image) -> ee.Image:
+        #     t = i.get("system:time_start")  # Not used
+        #     weight: ee.Image = i.select("weight")
+
+        #     ndwi: ee.Image = i.normalizedDifference(["green", "nir"]).rename("ndwi")
+        #     indvi: ee.Image = i.normalizedDifference(["red", "nir"]).rename("indvi")
+        #     mndwi: ee.Image = i.normalizedDifference(["green", "swir"]).rename("mndwi")
+
+        #     ndwi = ndwi.clamp(water_index_min, water_index_max)
+        #     indvi = indvi.clamp(water_index_min, water_index_max)
+        #     mndwi = mndwi.clamp(water_index_min, water_index_max)
+
+        #     return ee.Image([ndwi, indvi, mndwi]).addBands(weight)
+
+        # images = images.map(calculate_water_statistics)
+
+        # self._images_with_statistics = images
+
+        # image = (
+        #     images.map(lambda i: i.select(bands).multiply(i.select("weight")))
+        #     .sum()
+        #     .divide(images.select("weight").sum())
+        # )
+
+        # if clip == True:
+        #     return image.clip(bounds)
+        # else:
+        #     return image
 
     # Add gtsm and gebco data to images
     @staticmethod
