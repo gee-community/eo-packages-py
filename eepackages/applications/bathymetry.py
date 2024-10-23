@@ -482,6 +482,9 @@ class Bathymetry(object):
         image_calib = ee.Image(ee.Algorithms.If(bool_empty_filGTSM, ee.ImageCollection([]).first(), self.compute_bathy_GTSM(filteredGTSM)))
         image_uncalib = ee.Image(ee.Algorithms.If(bool_empty_filNoGTSM, ee.ImageCollection([]).first(), self.compute_proxy_NoGTSM(filteredNoGTSM)))
 
+        self._image_bathy = image_calib
+        self._image_proxy = image_uncalib
+
         # merge the images
         image_bp = ee.ImageCollection([image_calib, image_uncalib]) # TODO: filter out empty image
         image = image_bp.first() # this selects the first image; image_calib (bathy) if it exists, else image_uncalib (proxy), 
