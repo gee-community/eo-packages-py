@@ -376,6 +376,7 @@ class Bathymetry(object):
         upper_cdf_boundary: float = 80,
         cloud_frequency_threshold_data: float = 0.15,
         clip: bool = False,
+        mosaic_by_day: bool = True,
     ) -> ee.Image:
         if water_index_min:
             self.waterIndexMin = water_index_min
@@ -399,6 +400,11 @@ class Bathymetry(object):
         )
 
         self._raw_images = images
+
+        if mosaic_by_day:
+            images = assets.mosaic_by_day(images)
+
+        self._reduced_images = images
 
         bands: List[str] = ["blue", "green", "red", "nir", "swir"]
 
