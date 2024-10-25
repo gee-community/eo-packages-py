@@ -539,7 +539,7 @@ class Bathymetry(object):
     # Add gtsm and gebco data to images
     @staticmethod
     def add_gtsm_gebco_data_to_images(image, gtsm_col, tile=ee.Feature(None),
-                                    max_spatial_offset=1, max_temporal_offset=10):
+                                    max_spatial_offset=50, max_temporal_offset=10):
         ''' Add gtsm and gebco data to images.
 
         :param image: Image to which gtsm data is added.
@@ -549,7 +549,7 @@ class Bathymetry(object):
         :param tile: Tile to which image belongs (default=None, tile geometry is determined based on image geometry).
         :type tile: ee.Feature
         :param max_spatial_offset: Maximum spatial offset in kilometers.
-        :type max_spatial_offset: float (default=1)
+        :type max_spatial_offset: float (default=50)
         :param max_temporal_offset: Maximum temporal offset in minutes
         :type max_temporal_offset: float (default=10)
         '''
