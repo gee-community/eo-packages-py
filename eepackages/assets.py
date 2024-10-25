@@ -472,7 +472,7 @@ def mosaic_by_day(images):
             .copyProperties(i, exclude=["system:time_start"])
             .set(
                 {
-                    "system:time_start": ee.Date(i.get("date")).millis(),
+                    "system:time_start": i.get("system:time_start"), # keep first image time in matched images
                     "system:footprint": matches.geometry().dissolve(10),
                 }
             )
