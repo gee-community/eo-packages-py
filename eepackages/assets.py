@@ -819,14 +819,16 @@ def depth_proxy(image_col):
     # weighted average (iso mean of water occurence)
     # .map(lambda i: i.select("ndwi_water").multiply(i.select("weight")))
     # TODO: check ndwi_waterweight output vs .map lambda output
-    waterReduceSumWeighted = NDWICollectionMapped.select("ndwi_waterweight").reduce(ee.Reducer.sum()).int16().rename('waterOccurrenceCountWeighted') # count number of water occurrences at each pixel
-    bandCollectionLengthWeighted = NDWICollectionMapped.select("weight").reduce(ee.Reducer.sum()).int16().rename('numberOfImagesAnalysedWeighted') # count number of water occurrences at each pixel
+    waterReduceSumWeighted = NDWICollectionMapped.select("ndwi_waterweight").reduce(ee.Reducer.sum()).float().rename('waterOccurrenceCountWeighted') # count number of water occurrences at each pixel
+    bandCollectionLengthWeighted = NDWICollectionMapped.select("weight").reduce(ee.Reducer.sum()).float().rename('numberOfImagesAnalysedWeighted') # count number of water occurrences at each pixel
+    bandCollectionMeanWeighted = NDWICollectionMapped.select("weight").reduce(ee.Reducer.mean()).float().rename('meanImagesAnalysedWeighted') # mean of the weights in the images
     waterPercentageWeighted = NDWICollectionMapped.select("ndwi_waterweight")\
                             .sum()\
                             .divide(NDWICollectionMapped.select("weight").sum())\
                             .multiply(100)\
-                            .rename("waterOccurrencePercentageWeighted")
-    gridCellWaterOccurrenceOutput = gridCellWaterOccurrenceOutput.addBands(waterPercentageWeighted).addBands(waterReduceSumWeighted).addBands(bandCollectionLengthWeighted) #add bands to the water occurrence image
+                            .rename("waterOccurrencePercentageWeighted")\
+                            .toFloat()
+    gridCellWaterOccurrenceOutput = gridCellWaterOccurrenceOutput.addBands(waterPercentageWeighted).addBands(waterReduceSumWeighted).addBands(bandCollectionLengthWeighted).addBands(bandCollectionMeanWeighted) #add bands to the water occurrence image
 
     # create median NDWI band (note, not used now)
     ndwiMedian = NDWICollectionMapped.select("ndwi").median().rename('ndwiMedian') #calculate the median NDWI
