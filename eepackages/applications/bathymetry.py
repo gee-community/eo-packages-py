@@ -652,47 +652,6 @@ class Bathymetry(object):
         
         # Return image
         return image
-    
-    # Get additional info in imagecollection
-    @staticmethod
-    def get_additional_info_imagecol(image_col):
-        ''' Get additional info added to the image collection.
-
-        :param image_col: Image collection
-        :type image_col: ee.ImageCollection
-        '''
-
-        # get single values as per gtsm station, lon, lat, spatial offset, gebco hat & lat
-        gtsm_station = image_col.first().get('gtsm_station') # assuming this is the same everywhere, which is true since we use the tile as geometry
-        gtsm_station_lon = image_col.first().get('gtsm_station_lon')
-        gtsm_station_lat = image_col.first().get('gtsm_station_lat')
-        gtsm_station_spatial_offset = image_col.first().get('gtsm_station_spatial_offset')
-        gebco_hat = image_col.first().get('gebco_hat')
-        gebco_lat = image_col.first().get('gebco_lat')
-
-        # get lists of values as per temporal offset, water level, quality score, system:time_start, gtsm time & gtsm tidal stage percentage
-        temporal_offset = image_col.aggregate_array('gtsm_station_temporal_offset')
-        water_level = image_col.aggregate_array('gtsm_waterlevel')
-        quality_score = image_col.aggregate_array('quality_score')
-        system_time_start = image_col.aggregate_array('system:time_start')
-        gtsm_time = image_col.aggregate_array('gtsm_time')
-        gtsm_tidal_stage_percentage = image_col.aggregate_array('gtsm_tidal_stage_percentage')
-
-        # Add additional info to image collection
-        image_col = image_col.set({'gtsm_station': gtsm_station,
-                                'gtsm_station_lon': gtsm_station_lon,
-                                'gtsm_station_lat': gtsm_station_lat,
-                                'gtsm_station_spatial_offset': gtsm_station_spatial_offset,
-                                'gebco_hat': gebco_hat,
-                                'gebco_lat': gebco_lat,
-                                'gtsm_station_temporal_offsets': temporal_offset,
-                                'gtsm_water_levels': water_level,
-                                'quality_scores': quality_score,
-                                'system_time_starts': system_time_start,
-                                'gtsm_times': gtsm_time,
-                                'gtsm_tidal_stage_percentages': gtsm_tidal_stage_percentage})
-
-        return image_col
 
     # https://developers.google.com/earth-engine/guides/ic_mapping
     # Overall function to compute bathy with GTSM data
@@ -700,6 +659,49 @@ class Bathymetry(object):
     def compute_bathy_GTSM(image_col):
         # setter
         filteredGTSM = image_col
+
+        # Get additional info in imagecollection
+        def get_additional_info_imagecol(image_col):
+            ''' Get additional info added to the image collection.
+
+            :param image_col: Image collection
+            :type image_col: ee.ImageCollection
+            '''
+
+            # get single values as per gtsm station, lon, lat, spatial offset, gebco hat & lat
+            gtsm_station = image_col.first().get('gtsm_station') # assuming this is the same everywhere, which is true since we use the tile as geometry
+            gtsm_station_lon = image_col.first().get('gtsm_station_lon')
+            gtsm_station_lat = image_col.first().get('gtsm_station_lat')
+            gtsm_station_spatial_offset = image_col.first().get('gtsm_station_spatial_offset')
+            gebco_hat = image_col.first().get('gebco_hat')
+            gebco_lat = image_col.first().get('gebco_lat')
+
+            # get lists of values as per temporal offset, water level, quality score, system:time_start, gtsm time & gtsm tidal stage percentage
+            temporal_offset = image_col.aggregate_array('gtsm_station_temporal_offset')
+            water_level = image_col.aggregate_array('gtsm_waterlevel')
+            quality_score = image_col.aggregate_array('quality_score')
+            system_time_start = image_col.aggregate_array('system:time_start')
+            gtsm_time = image_col.aggregate_array('gtsm_time')
+            gtsm_tidal_stage_percentage = image_col.aggregate_array('gtsm_tidal_stage_percentage')
+
+            # Add additional info to image collection
+            image_col = image_col.set({'gtsm_station': gtsm_station,
+                                    'gtsm_station_lon': gtsm_station_lon,
+                                    'gtsm_station_lat': gtsm_station_lat,
+                                    'gtsm_station_spatial_offset': gtsm_station_spatial_offset,
+                                    'gebco_hat': gebco_hat,
+                                    'gebco_lat': gebco_lat,
+                                    'gtsm_station_temporal_offsets': temporal_offset,
+                                    'gtsm_water_levels': water_level,
+                                    'quality_scores': quality_score,
+                                    'system_time_starts': system_time_start,
+                                    'gtsm_times': gtsm_time,
+                                    'gtsm_tidal_stage_percentages': gtsm_tidal_stage_percentage})
+
+            return image_col
+
+        # add add info to imagecollection
+        filteredGTSM = get_additional_info_imagecol(filteredGTSM)
 
         # Get high tide offset, low tide offset and tide spread
         # got rid of all ee.Algroithms.Ifs with filters: https://gis.stackexchange.com/questions/478868/update-featurecollection-property-values-based-on-condition-without-using-ee-al 
