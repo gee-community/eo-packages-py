@@ -538,8 +538,8 @@ class Bathymetry(object):
 
     # Add gtsm and gebco data to images
     @staticmethod
-    def add_gtsm_gebco_data_to_images(image, gtsm_col, tile=ee.Feature(None),
-                                    max_spatial_offset=1, max_temporal_offset=10):
+    def add_gtsm_gebco_data_to_images(image, gtsm_col, tile=ee.Feature(None), max_temporal_offset=10):
+                                    #max_spatial_offset=1, max_temporal_offset=10):
         ''' Add gtsm and gebco data to images.
 
         :param image: Image to which gtsm data is added.
@@ -548,8 +548,8 @@ class Bathymetry(object):
         :type gtsm_col: ee.FeatureCollection
         :param tile: Tile to which image belongs (default=None, tile geometry is determined based on image geometry).
         :type tile: ee.Feature
-        :param max_spatial_offset: Maximum spatial offset in kilometers.
-        :type max_spatial_offset: float (default=1)
+        # :param max_spatial_offset: Maximum spatial offset in kilometers.
+        # :type max_spatial_offset: float (default=1)
         :param max_temporal_offset: Maximum temporal offset in minutes
         :type max_temporal_offset: float (default=10)
         '''
@@ -560,9 +560,12 @@ class Bathymetry(object):
         # 								   tile)) # NOTE, commented out because we always map over a tile?
 
         # Get area around the tile
-        tile_centroid = ee.Geometry.centroid(tile.geometry(), maxError=1)
-        tile_footprint = ee.Geometry(tile.geometry())
-        tile_buffer = tile_footprint.buffer(max_spatial_offset*1000)
+        # tile_centroid = ee.Geometry.centroid(tile.geometry(), maxError=1)
+        # tile_footprint = ee.Geometry(tile.geometry())
+        # tile_buffer = tile_footprint.buffer(max_spatial_offset*1000)
+
+        # Construct the station id filter
+        filter = ee.Filter.eq('station', ee.Number(tile.get("gtsm_station")))
 
         # Get period around image time
         image_time_start = ee.Date(image.get('system:time_start'))
@@ -574,20 +577,20 @@ class Bathymetry(object):
         image_period = ee.DateRange(ee.Date(image_time_start.millis().subtract(max_temporal_offset*60*1000)),
                                     ee.Date(image_time_end.millis().add(max_temporal_offset*60*1000)))
         
-        # Filter gtsm data based on image footprint and period
-        gtsm_col = gtsm_col.filterBounds(tile_buffer)
+        # Filter gtsm station and period
+        gtsm_col = gtsm_col.filter(filter)
         gtsm_col = gtsm_col.filterDate(image_period.start(), image_period.end())
 
         # Add spatial offset to features
         def add_spatial_offset_to_features(feature):
-            return feature.set('spatial offset to image', feature.distance(ee.Feature(tile_centroid)))
+            return feature.set('spatial offset to image', ee.Number(tile.get("gtsm_distance")))
         gtsm_col = gtsm_col.map(add_spatial_offset_to_features)
 
         # Get minimum spatial offset
-        min_spatial_offset = gtsm_col.reduceColumns(ee.Reducer.min(), ['spatial offset to image']).get('min')
+        #min_spatial_offset = gtsm_col.reduceColumns(ee.Reducer.min(), ['spatial offset to image']).get('min')
         
         # Get features for which the spatial offset is equal to the minimum spatial offset (multiple features possible)
-        gtsm_col = gtsm_col.filter(ee.Filter.eq('spatial offset to image', min_spatial_offset))
+        #gtsm_col = gtsm_col.filter(ee.Filter.eq('spatial offset to image', min_spatial_offset))
 
         # Add temporal offset to features
         def add_temporal_offset_to_features(feature):
@@ -614,7 +617,7 @@ class Bathymetry(object):
         :type image: ee.Image
         :param gebco_image: gebco image with highest and lowest astronomical tide.
         :type gebco_image: ee.Image
-        :param max_spatial_offset: Maximum spatial offset in kilometers.
+        :param max_spatial_offset: Maximum spatial offset in kilometers for getting the GEBCO data connected to the GTSM station
         :type max_spatial_offset: float (default=1)
         '''
 
