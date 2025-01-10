@@ -359,6 +359,7 @@ class Bathymetry(object):
         stop: datetime,
         scale: float,
         filter_masked: bool,
+        tile: Optional[ee.Feature] = None,
         filter_masked_fraction: Optional[float] = None,
         filter: Optional[ee.Filter] = None,
         bounds_buffer: Optional[float] = None,
@@ -459,8 +460,11 @@ class Bathymetry(object):
 
         # ADD-INS (method improvements)
 
+        if not tile:
+            tile = ee.Feature(bounds)
+
         # map GTSM & GEBCO on the image collection
-        GTSMcol = images.map(lambda image: self.add_gtsm_gebco_data_to_images(image.clip(bounds), gtsm_col, ee.Feature(bounds))) # TODO: test.clip(bounds)
+        GTSMcol = images.map(lambda image: self.add_gtsm_gebco_data_to_images(image.clip(bounds), gtsm_col, tile)) # TODO: test.clip(bounds) 
 
         filteredGTSM = GTSMcol.filter(ee.Filter.notNull(['gtsm_feature'])) # images with matching GTSM data
         filteredNoGTSM = GTSMcol.filter(ee.Filter.notNull(['gtsm_feature']).Not()) # images without matching GTSM data
