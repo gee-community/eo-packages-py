@@ -564,12 +564,14 @@ class Bathymetry(object):
         # 								   tile)) # NOTE, commented out because we always map over a tile?
 
         # Get area around the tile
-        # tile_centroid = ee.Geometry.centroid(tile.geometry(), maxError=1)
+        tile_centroid = ee.Geometry.centroid(tile.geometry(), maxError=1)
         # tile_footprint = ee.Geometry(tile.geometry())
+        tile_dist = ee.Number(tile.get("gtsm_distance"))
         # tile_buffer = tile_footprint.buffer(max_spatial_offset*1000)
+        tile_buffer = tile_centroid.buffer(tile_dist.add(100)) # add small 100 m extra buffer to be sure we capture the GTSM point (our dist calc is a little diff than GEE's)
 
         # Construct the station id filter
-        filter = ee.Filter.eq('station', ee.Number(tile.get("gtsm_station")))
+        #filter = ee.Filter.eq('station', ee.Number(tile.get("gtsm_station")))
 
         # Get period around image time
         image_time_start = ee.Date(image.get('system:time_start'))
@@ -582,19 +584,20 @@ class Bathymetry(object):
                                     ee.Date(image_time_end.millis().add(max_temporal_offset*60*1000)))
         
         # Filter gtsm station and period
-        gtsm_col = gtsm_col.filter(filter)
+        #gtsm_col = gtsm_col.filter(filter)
+        gtsm_col = gtsm_col.filterBounds(tile_buffer)
         gtsm_col = gtsm_col.filterDate(image_period.start(), image_period.end())
 
         # Add spatial offset to features
         def add_spatial_offset_to_features(feature):
-            return feature.set('spatial offset to image', ee.Number(tile.get("gtsm_distance")))
+            return feature.set('spatial offset to image', feature.distance(ee.Feature(tile_centroid))) #tile_dist
         gtsm_col = gtsm_col.map(add_spatial_offset_to_features)
 
         # Get minimum spatial offset
-        #min_spatial_offset = gtsm_col.reduceColumns(ee.Reducer.min(), ['spatial offset to image']).get('min')
+        min_spatial_offset = gtsm_col.reduceColumns(ee.Reducer.min(), ['spatial offset to image']).get('min')
         
         # Get features for which the spatial offset is equal to the minimum spatial offset (multiple features possible)
-        #gtsm_col = gtsm_col.filter(ee.Filter.eq('spatial offset to image', min_spatial_offset))
+        gtsm_col = gtsm_col.filter(ee.Filter.eq('spatial offset to image', min_spatial_offset))
 
         # Add temporal offset to features
         def add_temporal_offset_to_features(feature):
