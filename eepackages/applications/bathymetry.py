@@ -568,7 +568,7 @@ class Bathymetry(object):
         # tile_footprint = ee.Geometry(tile.geometry())
         tile_dist = ee.Number(tile.get("gtsm_distance"))
         # tile_buffer = tile_footprint.buffer(max_spatial_offset*1000)
-        tile_buffer = tile_centroid.buffer(tile_dist.add(tile_dist.multiply(0.2))) # add small 20% extra buffer to be sure we capture the GTSM point (our dist calc is a little diff than GEE's)
+        tile_buffer = tile_centroid.buffer(tile_dist.add(tile_dist.multiply(0.1))) # add small 10% extra buffer to be sure we capture the GTSM point (our dist calc is a little diff than GEE's)
 
         # Construct the station id filter
         #filter = ee.Filter.eq('station', ee.Number(tile.get("gtsm_station")))
